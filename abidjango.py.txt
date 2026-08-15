@@ -1,0 +1,315 @@
+import streamlit as st
+import pandas as pd
+import random
+from datetime import datetime
+
+# Auto-refresh (nécessite : pip install streamlit-autorefresh)
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTO_REFRESH_AVAILABLE = True
+except ImportError:
+    AUTO_REFRESH_AVAILABLE = False
+
+st.set_page_config(
+    page_title="AbidjanGo V7.2",
+    page_icon="🚕",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ---------- Style ----------
+st.markdown("""
+<style>
+    .stButton>button {border-radius: 12px; height: 3.2em;}
+    div[data-testid="stMetricValue"] {font-size: 1.6rem;}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🚕 AbidjanGo V7.2")
+st.caption("⚠️ Application non officielle | Données simulées | Taxi compteur • Gbaka • Waran | Suivi GPS temps réel")
+
+# ---------- Choix du profil ----------
+profil = st.radio(
+    "Choisissez votre profil",
+    ["👤 Client", "🧑‍✈️ Chauffeur"],
+    horizontal=True,
+    key="profil"
+)
+
+st.divider()
+
+# ---------- Données communes ----------
+LIEUX = [
+    "Marcory", "Adjamé", "Yopougon", "Cocody", "Plateau",
+    "Cocody St Jean", "Bingerville", "Anyama", "Abobo", "Treichville",
+    "Koumassi", "Port-Bouët", "Riviera", "Angré", "Deux-Plateaux"
+]
+
+MODES = {
+    "Taxi compteur": {"icon": "🚕", "prix_base": 800, "vitesse": 25, "capacite": "4 places"},
+    "Gbaka": {"icon": "🚐", "prix_base": 300, "vitesse": 20, "capacite": "14-18 places"},
+    "Waran": {"icon": "🚖", "prix_base": 500, "vitesse": 22, "capacite": "4-5 places (partagé)"}
+}
+
+# Initialisation GPS
+if "gps_lat" not in st.session_state:
+    st.session_state.gps_lat = 5.35
+if "gps_lon" not in st.session_state:
+    st.session_state.gps_lon = -4.02
+if "gps_history" not in st.session_state:
+    st.session_state.gps_history = []
+
+def update_gps_position(intensity=0.006):
+    """Simule un déplacement GPS réaliste"""
+    st.session_state.gps_lat += random.uniform(-intensity, intensity)
+    st.session_state.gps_lon += random.uniform(-intensity, intensity)
+    st.session_state.gps_history.append({
+        "lat": st.session_state.gps_lat,
+        "lon": st.session_state.gps_lon,
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
+    if len(st.session_state.gps_history) > 20:
+        st.session_state.gps_history = st.session_state.gps_history[-20:]
+
+# ---------- Auto-refresh ----------
+# Rafraîchit automatiquement toutes les 8 secondes quand le suivi est actif
+if AUTO_REFRESH_AVAILABLE:
+    # On active l'auto-refresh uniquement si on est en mode suivi ou position partagée
+    if st.session_state.get("track", False) or st.session_state.get("position_partagee", False):
+        count = st_autorefresh(interval=8000, key="gps_autorefresh")
+        # Mise à jour GPS à chaque refresh
+        update_gps_position(intensity=0.004)
+else:
+    st.sidebar.warning("Pour l'auto-refresh, installez : pip install streamlit-autorefresh")
+
+# =====================================================================
+#                          OPTION CLIENT
+# =====================================================================
+if profil == "👤 Client":
+    
+    with st.sidebar:
+        st.header("Paramètres Client")
+        theme = st.selectbox("Thème", ["System", "Light", "Dark"])
+        st.divider()
+        st.info("Modes disponibles")
+        st.write("• Taxi compteur")
+        st.write("• Gbaka")
+        st.write("• Waran")
+        st.divider()
+        st.markdown("**Rafraîchissement GPS**")
+        if AUTO_REFRESH_AVAILABLE and st.session_state.get("track", False):
+            st.success("🟢 Auto-refresh actif (toutes les 8s)")
+        if st.button("🔄 Actualiser maintenant", use_container_width=True):
+            update_gps_position()
+            st.rerun()
+
+    col1, col2 = st.columns([1, 1.4])
+
+    with col1:
+        st.subheader("Commander un trajet")
+        
+        mode = st.selectbox(
+            "Type de véhicule",
+            list(MODES.keys()),
+            format_func=lambda x: f"{MODES[x]['icon']} {x}"
+        )
+        
+        depart = st.selectbox("Départ", LIEUX, index=0)
+        arrivee = st.selectbox("Arrivée", LIEUX, index=4)
+        
+        if mode == "Taxi compteur":
+            st.caption("Tarif au compteur (simulation)")
+        elif mode == "Gbaka":
+            st.caption("Tarif fixe par tronçon (simulation)")
+        else:
+            st.caption("Tarif négocié / partagé (simulation)")
+        
+        nb_passagers = st.slider("Nombre de passagers", 1, 4, 1)
+        
+        if st.button("🚀 COMMANDER / TRACKER", type="primary", use_container_width=True):
+            st.session_state.track = True
+            st.session_state.mode = mode
+            st.session_state.depart = depart
+            st.session_state.arrivee = arrivee
+            update_gps_position()
+
+    with col2:
+        st.subheader("📍 Suivi GPS en temps réel")
+        
+        if st.session_state.gps_history:
+            map_data = pd.DataFrame(st.session_state.gps_history)
+        else:
+            map_data = pd.DataFrame({
+                "lat": [st.session_state.gps_lat],
+                "lon": [st.session_state.gps_lon]
+            })
+        
+        st.map(map_data, zoom=12)
+        
+        gps1, gps2, gps3 = st.columns(3)
+        gps1.metric("Latitude", f"{st.session_state.gps_lat:.5f}")
+        gps2.metric("Longitude", f"{st.session_state.gps_lon:.5f}")
+        gps3.metric("Dernière MAJ", datetime.now().strftime("%H:%M:%S"))
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Véhicules proches", random.randint(8, 25))
+        m2.metric("Temps d'attente moyen", f"{random.randint(3, 12)} min")
+        m3.metric("Demandes actives", random.randint(15, 60))
+
+    # Résultat de la commande
+    if st.session_state.get("track", False):
+        mode = st.session_state.mode
+        depart = st.session_state.depart
+        arrivee = st.session_state.arrivee
+        icon = MODES[mode]["icon"]
+        
+        st.divider()
+        st.subheader(f"{icon} {mode} – {depart} → {arrivee}")
+        
+        distance_km = max(0.5, random.uniform(3.0, 16.0) - len(st.session_state.gps_history) * 0.15)
+        vitesse = MODES[mode]["vitesse"]
+        temps_min = max(3, int((distance_km / vitesse) * 60) + random.randint(-2, 5))
+        
+        if mode == "Taxi compteur":
+            tarif = int(MODES[mode]["prix_base"] + distance_km * 280 + random.randint(-100, 200))
+            tarif_text = f"{tarif} FCFA (estimation compteur)"
+        elif mode == "Gbaka":
+            tarif = MODES[mode]["prix_base"] + random.choice([0, 50, 100])
+            tarif_text = f"{tarif} FCFA (tarif tronçon)"
+        else:
+            tarif = int(MODES[mode]["prix_base"] + distance_km * 120 + random.randint(-50, 150))
+            tarif_text = f"{tarif} FCFA (estimation partagée)"
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Arrivée estimée", f"{temps_min} min")
+        c2.metric("Distance restante", f"{distance_km:.1f} km")
+        c3.metric("Tarif estimé", tarif_text)
+        c4.metric("Vitesse actuelle", f"{random.randint(18, 48)} km/h")
+        
+        progression = min(95, 15 + len(st.session_state.gps_history) * 4)
+        st.progress(progression / 100, text=f"Suivi GPS en direct – {progression}% du trajet effectué")
+        
+        st.markdown(f"""
+        **Informations véhicule en direct**
+        - Capacité : {MODES[mode]['capacite']}
+        - Position GPS : `{st.session_state.gps_lat:.5f}, {st.session_state.gps_lon:.5f}`
+        - Temps d’attente estimé : {random.randint(1, 8)} min
+        - Chauffeur : {random.choice(['Koffi A.', 'Aya B.', 'Moussa D.', 'Fatou K.', 'Yves T.'])}
+        - Note moyenne : {random.uniform(3.8, 4.9):.1f} ★
+        """)
+        
+        with st.expander("Historique des positions GPS (auto-refresh)"):
+            if st.session_state.gps_history:
+                for pos in reversed(st.session_state.gps_history[-8:]):
+                    st.write(f"🕒 {pos['time']} → Lat: {pos['lat']:.5f} | Lon: {pos['lon']:.5f}")
+            else:
+                st.write("En attente de positions...")
+
+# =====================================================================
+#                          OPTION CHAUFFEUR
+# =====================================================================
+else:
+    
+    with st.sidebar:
+        st.header("Paramètres Chauffeur")
+        theme = st.selectbox("Thème", ["System", "Light", "Dark"])
+        st.divider()
+        st.success("Mode Chauffeur actif")
+        st.write("Votre position GPS est visible par les clients.")
+        st.divider()
+        st.markdown("**Rafraîchissement GPS**")
+        if AUTO_REFRESH_AVAILABLE and st.session_state.get("position_partagee", False):
+            st.success("🟢 Auto-refresh actif (toutes les 8s)")
+        if st.button("🔄 Actualiser ma position", use_container_width=True):
+            update_gps_position(intensity=0.009)
+            st.rerun()
+
+    st.subheader("🧑‍✈️ Espace Chauffeur – Suivi GPS")
+    
+    colA, colB = st.columns([1, 1.3])
+    
+    with colA:
+        st.markdown("### Mon statut")
+        
+        type_vehicule = st.selectbox(
+            "Mon type de véhicule",
+            list(MODES.keys()),
+            format_func=lambda x: f"{MODES[x]['icon']} {x}"
+        )
+        
+        statut = st.radio(
+            "Statut actuel",
+            ["🟢 Disponible", "🟡 En course", "🔴 Hors ligne"],
+            index=0
+        )
+        
+        quartier = st.selectbox("Mon quartier actuel", LIEUX)
+        
+        if st.button("📍 Activer / Partager ma position GPS", type="primary", use_container_width=True):
+            st.session_state.position_partagee = True
+            st.session_state.statut_chauffeur = statut
+            st.session_state.quartier_chauffeur = quartier
+            st.session_state.type_vehicule = type_vehicule
+            update_gps_position()
+        
+        st.divider()
+        
+        st.markdown("### Mes statistiques du jour")
+        s1, s2 = st.columns(2)
+        s1.metric("Courses acceptées", random.randint(4, 18))
+        s2.metric("Gains estimés", f"{random.randint(8500, 32000)} FCFA")
+        
+        st.markdown("### Ma position GPS actuelle")
+        st.code(f"Latitude  : {st.session_state.gps_lat:.6f}\nLongitude : {st.session_state.gps_lon:.6f}")
+        
+    with colB:
+        st.markdown("### 📍 Carte – Ma position en direct")
+        
+        if st.session_state.gps_history:
+            map_data = pd.DataFrame(st.session_state.gps_history)
+        else:
+            map_data = pd.DataFrame({
+                "lat": [st.session_state.gps_lat + random.uniform(-0.015, 0.015) for _ in range(6)],
+                "lon": [st.session_state.gps_lon + random.uniform(-0.015, 0.015) for _ in range(6)]
+            })
+        
+        st.map(map_data, zoom=13)
+        
+        if st.session_state.get("position_partagee", False):
+            st.success(f"✅ GPS actif – {st.session_state.statut_chauffeur}")
+            st.info(f"""
+            **Résumé en direct**
+            - Véhicule : {st.session_state.type_vehicule}
+            - Quartier : {st.session_state.quartier_chauffeur}
+            - Position partagée : Oui
+            - Dernière mise à jour : {datetime.now().strftime('%H:%M:%S')}
+            - Auto-refresh : {'Activé' if AUTO_REFRESH_AVAILABLE else 'Non disponible'}
+            """)
+        else:
+            st.warning("⚠️ Position GPS non partagée. Activez-la pour être visible.")
+    
+    # Demandes entrantes
+    st.divider()
+    st.subheader("Demandes à proximité (basées sur votre GPS)")
+    
+    if st.session_state.get("position_partagee", False) and "Disponible" in st.session_state.get("statut_chauffeur", ""):
+        demandes = [
+            {"client": "Client A.", "depart": random.choice(LIEUX), "arrivee": random.choice(LIEUX), "distance": f"{random.uniform(0.7, 3.2):.1f} km"},
+            {"client": "Client B.", "depart": random.choice(LIEUX), "arrivee": random.choice(LIEUX), "distance": f"{random.uniform(1.0, 4.0):.1f} km"},
+            {"client": "Client C.", "depart": random.choice(LIEUX), "arrivee": random.choice(LIEUX), "distance": f"{random.uniform(0.4, 2.5):.1f} km"},
+        ]
+        
+        for i, d in enumerate(demandes):
+            with st.container():
+                c1, c2, c3 = st.columns([2, 2, 1])
+                c1.write(f"**{d['client']}**")
+                c2.write(f"{d['depart']} → {d['arrivee']} ({d['distance']})")
+                if c3.button("Accepter", key=f"accept_{i}"):
+                    st.success(f"Course acceptée : {d['client']} – Suivi GPS activé")
+                    update_gps_position()
+    else:
+        st.info("Passez en statut « Disponible » et activez votre GPS pour recevoir des demandes.")
+
+# ---------- Pied de page ----------
+st.divider()
+st.caption("Développé avec ❤️ pour Abidjan | AbidjanGo V7.2 – Client & Chauffeur | GPS + Auto-refresh toutes les 8 secondes")
