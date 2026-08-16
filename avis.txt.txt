@@ -1,0 +1,30 @@
+st.markdown("---")
+st.subheader("⭐ Donnez votre avis sur AbidjanGo")
+
+# Formulaire d'avis
+with st.form("form_avis"):
+    nom = st.text_input("Votre nom")
+    note = st.slider("Notez l'application", 1, 5, 5)
+    commentaire = st.text_area("Votre avis")
+    envoyer = st.form_submit_button("Envoyer mon avis")
+
+if envoyer:
+    if nom and commentaire:
+        # On sauvegarde dans un fichier
+        with open("avis.txt", "a", encoding="utf-8") as f:
+            f.write(f"{nom}|{note}|{commentaire}\n")
+        st.success("Merci pour votre avis ! 🙏")
+    else:
+        st.warning("Remplissez votre nom et votre avis")
+
+st.markdown("### 💬 Ce que disent nos utilisateurs")
+try:
+    with open("avis.txt", "r", encoding="utf-8") as f:
+        avis = f.readlines()
+        for a in avis[-5:]: # affiche les 5 derniers avis
+            n, note, c = a.strip().split("|")
+            st.markdown(f"**{n}** {'⭐'*int(note)}")
+            st.write(f"_{c}_")
+            st.divider()
+except:
+    st.info("Soyez le premier à donner votre avis !")
